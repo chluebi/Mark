@@ -2,6 +2,7 @@ import praw
 import json
 import discord
 import time
+import os
 
 tokenfile = open('tokens.json', 'r')
 tokens = json.load(tokenfile)
@@ -21,6 +22,23 @@ prefix = 'm!'
 @client.event
 async def on_ready():
     print('bot ready')
+
+
+def create_subfolder(name):
+    dirname = os.path.dirname(__file__)
+    create_folder(dirname + '/' + name)
+    return dirname + '/' + name
+
+
+def create_folder(path):
+    try:
+        if os.path.isdir(path):
+            print("Error: The directory you're attempting to create already exists")  # or just pass
+        else:
+            os.makedirs(path)
+    except IOError as exception:
+        raise IOError('%s: %s' % (path, exception.strerror))
+    return None
 
 
 def parse_message(message):
@@ -123,8 +141,12 @@ async def on_message(message):
                                 for comment in submission.comments.list():
                                     data.append(comment.body)
                                     i += 1
+                                    print(i)
+                                    if i >= msg[5]:
+                                        break
                                 if i >= msg[5]:
                                     break
+                                print(i)
                     else:
                         await message.channel.send('argument has to be [titles,posts,comments] \ncan\'t be ' + msg[4])
                         return
@@ -133,7 +155,9 @@ async def on_message(message):
                     embed = discord.Embed(title='Finished Searching', url='https://old.reddit.com/r/{}/{}'.format(msg[2], msg[3]), description='Found {} results.\nThe search took {} seconds'.format(len(data), time.time() - searchtime), color=0x22f104)
                     await message.channel.send(embed=embed)
 
-                    filename = 'Data/{}-{}-{}-{}.txt'.format(message.author.name, msg[2], msg[3], time.ctime())
+                    unique_name = message.author.name + '#' + message.author.discriminator
+                    create_subfolder('Data/' + unique_name)
+                    filename = 'Data/{}/{}-{}-{}.txt'.format(unique_name, msg[2], msg[3], time.ctime())
                     file = open(filename, 'w+')
                     for element in data:
                         file.write(element)
