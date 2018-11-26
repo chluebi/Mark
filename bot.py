@@ -120,7 +120,8 @@ async def reddit_harvest_start(msg):
         return posts
 
 
-async def reddit_harvest(msg, channelid, embed, posts):
+async def reddit_harvest(msg, channelid, posts):
+    embed = discord.Embed(title='Searching 🔎', url='https://old.reddit.com/r/{}/{}'.format(msg[2], msg[3]), description='Searching the first {} {} in {} of {}'.format(msg[5], msg[4], msg[3], msg[2]), color=0x22f104)
     channel = client.get_channel(channelid)
 
     data = []
@@ -171,17 +172,18 @@ async def on_message(message):
                 await message.channel.send(e.args[0])
                 return
 
-            embed = discord.Embed(title='Searching 🔎', url='https://old.reddit.com/r/{}/{}'.format(msg[2], msg[3]), description='Searching the first {} {} in {} of {}'.format(msg[5], msg[4], msg[3], msg[2]), color=0x22f104)
             searchtime = time.time()
 
             try:
-                data = await reddit_harvest(msg, message.channel.id, embed, posts)
+                data = await reddit_harvest(msg, message.channel.id, posts)
             except InputError as e:
                 await message.channel.send(e.args[0])
                 return
 
             print(data)
-            embed = discord.Embed(title='Finished Searching', url='https://old.reddit.com/r/{}/{}'.format(msg[2], msg[3]), description='Found {} results.\nThe search took {} seconds'.format(len(data), time.time() - searchtime), color=0x22f104)
+            embed = discord.Embed(title='Finished Searching', url='https://old.reddit.com/r/{}/{}'.format(msg[2], msg[3]),
+                                  description='Found {} results.\nThe search took {} seconds'.format(len(data), time.time() - searchtime),
+                                  color=0x22f104)
             await message.channel.send(embed=embed)
 
             unique_name = message.author.name + '#' + message.author.discriminator
@@ -194,6 +196,44 @@ async def on_message(message):
             file.close()
 
             await message.channel.send(file=discord.File(filename))
+            os.remove(filename)
 
+            await message.channel.send('To save this file for later use, use ``{} save file <your_chosen_filename>``'.format(prefix))
+
+    if msg[0] == 'save':
+
+        if msg[1] == 'text':
+
+            await message.channel.send('Please paste your message here:')
+
+            def check(m):
+                return m.author == message.author and m.channel == message.channel
+            try:
+                text = await client.wait_for('message', check=check, timeout=20.0)
+            except asyncio.TimeoutError:
+                await message.channel.send('You took too long...')
+                return
+            if msg[3] == '``empty``':
+                await message.channel.send('Enter Filename:'.format(message))
+                try:
+                    filename = await client.wait_for('message', check=check, timeout=20.0)
+                except asyncio.TimeoutError:
+                    await message.channel.send('You took too long...')
+                    return
+                filename2 = 'Data/{}/{}.txt'.format(message.author, filename.content)
+                try:
+                    file = open(filename2, 'w+')
+                    file.write(text.content)
+                except Exception as e:
+                    await message.channel.send('Not a valid filename.')
+
+                embed = discord.Embed(title='Text succesfully saved',
+                                      description='Saved as ``{}.txt``'.format(filename.content),
+                                      color=0x22f104)
+                await message.channel.send(embed=embed)
+
+    if msg[0] == 'logs':
+        async for mess in message.channel.history(limit=2):
+            print(mess.content)
 
 client.run(discordtoken)
