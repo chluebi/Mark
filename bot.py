@@ -157,11 +157,84 @@ async def reddit_harvest(msg, channelid, posts):
     return data
 
 
+async def get_text(msgid, channelid, msg):
+    channel = client.get_channel(channelid)
+    message = await channel.get_message(msgid)
+
+    await message.channel.send('Please paste your text here:')
+
+    def check(m):
+        return m.author == message.author and m.channel == message.channel
+    try:
+        text = await client.wait_for('message', check=check, timeout=20.0)
+    except asyncio.TimeoutError:
+        await message.channel.send('You took too long...')
+        return
+    if msg[2] == '``empty``':
+        await message.channel.send('Enter Filename:'.format(message))
+        try:
+            filename = await client.wait_for('message', check=check, timeout=20.0)
+            filename = filename.content
+        except asyncio.TimeoutError:
+            await message.channel.send('You took too long...')
+            return
+    else:
+        filename = msg[2]
+
+    returning = [filename, text]
+    return returning
+
+
+async def save_text(msgid, channelid, msg, filename, text):
+    channel = client.get_channel(channelid)
+    message = await channel.get_message(msgid)
+
+    filename2 = 'Data/{}/{}.txt'.format(message.author, filename)
+    try:
+        file = open(filename2, 'w+')
+        file.write(text.content)
+    except Exception as e:
+        await message.channel.send('Not a valid filename.')
+        print(e)
+
+
+async def find_file(msgid, channelid, msg, filename):
+    channel = client.get_channel(channelid)
+    message = await channel.get_message(msgid)
+
+    if len(message.attachments) != 0:
+        await message.attachments[0].save(filename)
+    else:
+        findfile = False
+        async for mess in message.channel.history(limit=2):
+            if len(mess.attachments) != 0:
+                await mess.attachments[0].save(filename)
+                findfile = True
+                break
+        if not findfile:
+            await message.channel.send('Please send your file here:')
+
+            def check(m):
+                check1 = m.author == message.author and m.channel == message.channel
+                check2 = len(m.attachments) != 0
+                return check1 and check2
+            try:
+                mess = await client.wait_for('message', check=check, timeout=20.0)
+            except asyncio.TimeoutError:
+                await message.channel.send('You took too long...')
+                return
+
+            await mess.attachments[0].save(filename)
+
+
 @client.event
 async def on_message(message):
     msg = parse_message(message.content)
     if not msg:
         return
+
+    msgid = message.id
+    channelid = message.channel.id
 
     if msg[0] == 'harvest':
 
@@ -204,33 +277,65 @@ async def on_message(message):
 
         if msg[1] == 'text':
 
-            await message.channel.send('Please paste your message here:')
+            returning = await get_text(msgid, channelid, msg)
 
-            def check(m):
-                return m.author == message.author and m.channel == message.channel
+            await save_text(msgid, channelid, msg, returning[0], returning[1])
+
+            filename = returning[0]
+
+            embed = discord.Embed(title='Text succesfully saved',
+                                  description='Saved as ``{}.txt``'.format(filename),
+                                  color=0x22f104)
+            await message.channel.send(embed=embed)
+
+        if msg[1] == 'file':
+
+            filename = 'Data/{}/tempfile.txt'.format(message.author)
+
+            await find_file(msgid, channelid, msg, filename)
+
+            file = open(filename, 'r+')
+
             try:
-                text = await client.wait_for('message', check=check, timeout=20.0)
-            except asyncio.TimeoutError:
-                await message.channel.send('You took too long...')
+                text = file.read()
+            except Exception as e:
+                await message.channel.send(e)
+                os.remove(filename)
                 return
-            if msg[3] == '``empty``':
+            length = len(text)
+            size = os.path.getsize(filename)
+            if size > 1000000:
+                await message.channel.send('File too large')
+                os.remove(filename)
+                return
+            start = text[0:min(length, 200)]
+
+            if msg[2] == '``empty``':
                 await message.channel.send('Enter Filename:'.format(message))
+
+                def check2(m):
+                    return m.author == message.author and m.channel == message.channel
                 try:
-                    filename = await client.wait_for('message', check=check, timeout=20.0)
+                    filename2 = await client.wait_for('message', check=check2, timeout=20.0)
+                    filename2 = filename2.content
                 except asyncio.TimeoutError:
                     await message.channel.send('You took too long...')
                     return
-                filename2 = 'Data/{}/{}.txt'.format(message.author, filename.content)
-                try:
-                    file = open(filename2, 'w+')
-                    file.write(text.content)
-                except Exception as e:
-                    await message.channel.send('Not a valid filename.')
+            else:
+                filemame2 = msg[2]
+            filename3 = 'Data/{}/{}.txt'.format(message.author, filename2)
 
-                embed = discord.Embed(title='Text succesfully saved',
-                                      description='Saved as ``{}.txt``'.format(filename.content),
-                                      color=0x22f104)
-                await message.channel.send(embed=embed)
+            file = open(filename3, 'w+')
+            file.write(text)
+            file.close()
+
+            embed = discord.Embed(title='File succesfully saved',
+                                  description='Saved as ``{}.txt``'.format(filename2),
+                                  color=0x22f104)
+            embed.add_field(name='Filesize:', value='{} bytes'.format(size), inline=True)
+            embed.add_field(name='Charaters:', value='{} characters'.format(length), inline=True)
+            embed.add_field(name='Beginning:', value='``{}``'.format(start), inline=False)
+            await message.channel.send(embed=embed)
 
     if msg[0] == 'logs':
         async for mess in message.channel.history(limit=2):
