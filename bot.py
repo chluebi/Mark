@@ -169,7 +169,7 @@ async def get_text(msgid, channelid, msg):
         text = await client.wait_for('message', check=check, timeout=20.0)
     except asyncio.TimeoutError:
         await message.channel.send('You took too long...')
-        return
+        return False
     if msg[2] == '``empty``':
         await message.channel.send('Enter Filename:'.format(message))
         try:
@@ -177,7 +177,7 @@ async def get_text(msgid, channelid, msg):
             filename = filename.content
         except asyncio.TimeoutError:
             await message.channel.send('You took too long...')
-            return
+            return False
     else:
         filename = msg[2]
 
@@ -193,9 +193,11 @@ async def save_text(msgid, channelid, msg, filename, text):
     try:
         file = open(filename2, 'w+')
         file.write(text.content)
+        return True
     except Exception as e:
         await message.channel.send('Not a valid filename.')
         print(e)
+        return False
 
 
 async def find_file(msgid, channelid, msg, filename):
@@ -222,9 +224,12 @@ async def find_file(msgid, channelid, msg, filename):
                 mess = await client.wait_for('message', check=check, timeout=20.0)
             except asyncio.TimeoutError:
                 await message.channel.send('You took too long...')
-                return
+                os.remove(filename)
+                return False
 
             await mess.attachments[0].save(filename)
+
+    return True
 
 
 @client.event
@@ -279,7 +284,11 @@ async def on_message(message):
 
             returning = await get_text(msgid, channelid, msg)
 
-            await save_text(msgid, channelid, msg, returning[0], returning[1])
+            if not returning:
+                return
+
+            if not await save_text(msgid, channelid, msg, returning[0], returning[1]):
+                return
 
             filename = returning[0]
 
@@ -292,7 +301,9 @@ async def on_message(message):
 
             filename = 'Data/{}/tempfile.txt'.format(message.author)
 
-            await find_file(msgid, channelid, msg, filename)
+            if not await find_file(msgid, channelid, msg, filename):
+                print('huh')
+                return
 
             file = open(filename, 'r+')
 
@@ -325,9 +336,16 @@ async def on_message(message):
                 filemame2 = msg[2]
             filename3 = 'Data/{}/{}.txt'.format(message.author, filename2)
 
-            file = open(filename3, 'w+')
-            file.write(text)
+            try:
+                file = open(filename3, 'w+')
+                file.write(text)
+            except Exception as e:
+                await message.channel.send('Not a valid filename.')
+                print(e)
+                return
+
             file.close()
+            os.remove(filename)
 
             embed = discord.Embed(title='File succesfully saved',
                                   description='Saved as ``{}.txt``'.format(filename2),
