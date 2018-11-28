@@ -18,6 +18,7 @@ reddit = praw.Reddit(client_id=reddittokens['client_id'],
 
 client = discord.Client()
 prefix = 'm!'
+maxsize = 100
 
 
 @client.event
@@ -26,6 +27,14 @@ async def on_ready():
 
 
 class InputError(Exception):
+    pass
+
+
+class SpaceError(Exception):
+    pass
+
+
+class FilenameError(Exception):
     pass
 
 
@@ -190,13 +199,15 @@ async def save_text(msgid, channelid, msg, filename, text):
     message = await channel.get_message(msgid)
 
     filename2 = 'Data/{}/{}.txt'.format(message.author, filename)
+
     try:
-        file = open(filename2, 'w+')
-        file.write(text.content)
+        await save_file(message.author, filename, text.content)
         return True
-    except Exception as e:
+    except SpaceError as e:
+        await message.channel.send(embed=space_embed(message.author))
+        return False
+    except FilenameError as e:
         await message.channel.send('Not a valid filename.')
-        print(e)
         return False
 
 
@@ -208,7 +219,7 @@ async def find_file(msgid, channelid, msg, filename):
         await message.attachments[0].save(filename)
     else:
         findfile = False
-        async for mess in message.channel.history(limit=2):
+        async for mess in message.channel.history(limit=3):
             if len(mess.attachments) != 0:
                 await mess.attachments[0].save(filename)
                 findfile = True
@@ -230,6 +241,35 @@ async def find_file(msgid, channelid, msg, filename):
             await mess.attachments[0].save(filename)
 
     return True
+
+
+def dirsize(path):
+    return sum(os.path.getsize(path + '/' + f) for f in os.listdir(path) if os.path.isfile(path + '/' + f))
+
+
+async def save_file(user, filename, filecontent):
+    path = 'Data/{}'.format(user)
+    size = dirsize(path)
+
+    filesize = len(filecontent) * 1.1
+
+    if size + filesize > maxsize:
+        raise SpaceError
+    else:
+        file = open('{}/{}.txt'.format(path, filename), 'w+')
+        file.write(filecontent)
+        file.close()
+
+        if len(os.path.split(os.path.realpath(file.name))[1]) < 5:
+            os.remove(os.path.realpath(file.name))
+            raise FilenameError
+
+
+def space_embed(user):
+    embed = discord.Embed(title='Not enough Space',
+                          description='You already used {}/{} of your storage. \n (The file you are trying to save is too large)'.format(dirsize('Data/{}'.format(user)), maxsize),
+                          color=0xff0000)
+    return embed
 
 
 @client.event
@@ -283,7 +323,6 @@ async def on_message(message):
         if msg[1] == 'text':
 
             returning = await get_text(msgid, channelid, msg)
-
             if not returning:
                 return
 
@@ -333,7 +372,8 @@ async def on_message(message):
                     await message.channel.send('You took too long...')
                     return
             else:
-                filemame2 = msg[2]
+                filename2 = msg[2]
+
             filename3 = 'Data/{}/{}.txt'.format(message.author, filename2)
 
             try:
@@ -358,5 +398,14 @@ async def on_message(message):
     if msg[0] == 'logs':
         async for mess in message.channel.history(limit=2):
             print(mess.content)
+
+    if msg[0] == 'size':
+        print(dir_size('Data/{}/'.format(message.author)))
+
+    if msg[0] == 'folder':
+        path = 'Data/{}/'.format(message.author)
+        for f in os.listdir(path):
+            print(os.path.getsize('{}/{}'.format(path, f)))
+
 
 client.run(discordtoken)
