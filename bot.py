@@ -18,7 +18,7 @@ reddit = praw.Reddit(client_id=reddittokens['client_id'],
 
 client = discord.Client()
 prefix = 'm!'
-maxsize = 100
+maxsize = 1000000
 
 
 @client.event
@@ -176,6 +176,7 @@ async def get_text(msgid, channelid, msg):
         return m.author == message.author and m.channel == message.channel
     try:
         text = await client.wait_for('message', check=check, timeout=20.0)
+        text = text.content
     except asyncio.TimeoutError:
         await message.channel.send('You took too long...')
         return False
@@ -192,23 +193,6 @@ async def get_text(msgid, channelid, msg):
 
     returning = [filename, text]
     return returning
-
-
-async def save_text(msgid, channelid, msg, filename, text):
-    channel = client.get_channel(channelid)
-    message = await channel.get_message(msgid)
-
-    filename2 = 'Data/{}/{}.txt'.format(message.author, filename)
-
-    try:
-        await save_file(message.author, filename, text.content)
-        return True
-    except SpaceError as e:
-        await message.channel.send(embed=space_embed(message.author))
-        return False
-    except FilenameError as e:
-        await message.channel.send('Not a valid filename.')
-        return False
 
 
 async def find_file(msgid, channelid, msg, filename):
@@ -247,22 +231,41 @@ def dirsize(path):
     return sum(os.path.getsize(path + '/' + f) for f in os.listdir(path) if os.path.isfile(path + '/' + f))
 
 
+def dircount(path):
+    return sum(1 for f in os.listdir(path) if os.path.isfile(path + '/' + f))
+
+
 async def save_file(user, filename, filecontent):
-    path = 'Data/{}'.format(user)
+    path = 'Data/{}/'.format(user)
+    filepath = '{}/{}.txt'.format(path, filename)
     size = dirsize(path)
+    fileamount = dircount(path)
 
-    filesize = len(filecontent) * 1.1
+    file = open(filepath, 'w+')
+    file.write(filecontent)
+    file.close()
 
-    if size + filesize > maxsize:
+    if dirsize(path) > maxsize:
+        os.remove(filepath)
         raise SpaceError
-    else:
-        file = open('{}/{}.txt'.format(path, filename), 'w+')
-        file.write(filecontent)
-        file.close()
 
-        if len(os.path.split(os.path.realpath(file.name))[1]) < 5:
-            os.remove(os.path.realpath(file.name))
-            raise FilenameError
+    if len(os.path.split(os.path.realpath(file.name))[1]) < 5:
+        os.remove(filepath)
+        raise FilenameError
+
+    length = len(filecontent)
+    filesize = os.path.getsize(filepath)
+    start = filecontent[0:min(length, 200)]
+
+    embed = discord.Embed(title='File succesfully saved',
+                          description='Saved as ``{}.txt``'.format(filename),
+                          color=0x22f104)
+    embed.add_field(name='Filesize:', value='{} bytes'.format(filesize), inline=True)
+    embed.add_field(name='Charaters:', value='{} characters'.format(length), inline=True)
+    embed.add_field(name='Storage', value='User {} has used {}/{} ({}%) of their space. With a total of {} files.'.format(user, size, maxsize, round(size / maxsize * 100), fileamount))
+    embed.add_field(name='Beginning:', value='``{}``'.format(start), inline=False)
+
+    return embed
 
 
 def space_embed(user):
@@ -326,25 +329,42 @@ async def on_message(message):
             if not returning:
                 return
 
-            if not await save_text(msgid, channelid, msg, returning[0], returning[1]):
+            try:
+                embed = await save_file(message.author, returning[0], returning[1])
+            except SpaceError as e:
+                await message.channel.send(embed=space_embed(message.author))
+                return
+            except FilenameError as e:
+                await message.channel.send('Not a valid filename.')
                 return
 
             filename = returning[0]
 
-            embed = discord.Embed(title='Text succesfully saved',
-                                  description='Saved as ``{}.txt``'.format(filename),
-                                  color=0x22f104)
             await message.channel.send(embed=embed)
 
         if msg[1] == 'file':
 
-            filename = 'Data/{}/tempfile.txt'.format(message.author)
+            tempfile = 'Data/Temps/tempfile.txt'.format(message.author)
 
-            if not await find_file(msgid, channelid, msg, filename):
+            if msg[2] == '``empty``':
+                await message.channel.send('Enter Filename:')
+
+                def check2(m):
+                    return m.author == message.author and m.channel == message.channel
+                try:
+                    filename = await client.wait_for('message', check=check2, timeout=20.0)
+                    filename = filename.content
+                except asyncio.TimeoutError:
+                    await message.channel.send('You took too long...')
+                    return
+            else:
+                filename = msg[2]
+
+            if not await find_file(msgid, channelid, msg, tempfile):
                 print('huh')
                 return
 
-            file = open(filename, 'r+')
+            file = open(tempfile, 'r+')
 
             try:
                 text = file.read()
@@ -352,47 +372,18 @@ async def on_message(message):
                 await message.channel.send(e)
                 os.remove(filename)
                 return
-            length = len(text)
-            size = os.path.getsize(filename)
-            if size > 1000000:
-                await message.channel.send('File too large')
-                os.remove(filename)
-                return
-            start = text[0:min(length, 200)]
-
-            if msg[2] == '``empty``':
-                await message.channel.send('Enter Filename:'.format(message))
-
-                def check2(m):
-                    return m.author == message.author and m.channel == message.channel
-                try:
-                    filename2 = await client.wait_for('message', check=check2, timeout=20.0)
-                    filename2 = filename2.content
-                except asyncio.TimeoutError:
-                    await message.channel.send('You took too long...')
-                    return
-            else:
-                filename2 = msg[2]
-
-            filename3 = 'Data/{}/{}.txt'.format(message.author, filename2)
 
             try:
-                file = open(filename3, 'w+')
-                file.write(text)
-            except Exception as e:
+                embed = await save_file(message.author, filename, text)
+            except SpaceError as e:
+                await message.channel.send(embed=space_embed(message.author))
+                return
+            except FilenameError as e:
                 await message.channel.send('Not a valid filename.')
-                print(e)
                 return
 
-            file.close()
-            os.remove(filename)
+            os.remove(tempfile)
 
-            embed = discord.Embed(title='File succesfully saved',
-                                  description='Saved as ``{}.txt``'.format(filename2),
-                                  color=0x22f104)
-            embed.add_field(name='Filesize:', value='{} bytes'.format(size), inline=True)
-            embed.add_field(name='Charaters:', value='{} characters'.format(length), inline=True)
-            embed.add_field(name='Beginning:', value='``{}``'.format(start), inline=False)
             await message.channel.send(embed=embed)
 
     if msg[0] == 'logs':
@@ -400,7 +391,7 @@ async def on_message(message):
             print(mess.content)
 
     if msg[0] == 'size':
-        print(dir_size('Data/{}/'.format(message.author)))
+        print(dirsize('Data/{}/'.format(message.author)))
 
     if msg[0] == 'folder':
         path = 'Data/{}/'.format(message.author)
