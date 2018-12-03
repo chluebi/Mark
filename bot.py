@@ -4,6 +4,7 @@ import discord
 import time
 import os
 import asyncio
+import markovify
 
 tokenfile = open('tokens.json', 'r')
 tokens = json.load(tokenfile)
@@ -102,7 +103,7 @@ async def reddit_harvest_start(msg):
                 raise InputError('argument has to be [5 < arg < 500] \ncan\'t be ' + str(msg[5]))
                 return
         except:
-            raise InputError('argument has to be [Integer, 5 < arg < 500] \ncan\'t be ' + msg[5])
+            raise InputError('argument has to be [Integer, 5 < arg < 500] \ncan\'t be ' + str(msg[5]))
             return
 
         if msg[3] == 'new':
@@ -131,6 +132,8 @@ async def reddit_harvest_start(msg):
 
 async def reddit_harvest(msg, channelid, posts):
     embed = discord.Embed(title='Searching 🔎', url='https://old.reddit.com/r/{}/{}'.format(msg[2], msg[3]), description='Searching the first {} {} in {} of {}'.format(msg[5], msg[4], msg[3], msg[2]), color=0x22f104)
+    if msg[4] == 'comments':
+        embed.add_field(name='Info:', value='Harvesting comments can take up to 2 minutes', inline=False)
     channel = client.get_channel(channelid)
 
     data = []
@@ -149,16 +152,16 @@ async def reddit_harvest(msg, channelid, posts):
         async with channel.typing():
             i = 0
             for submission in posts:
-                submission.comments.replace_more(limit=None)
+                submission.comments.replace_more(threshold=msg[5])
                 for comment in submission.comments.list():
                     data.append(comment.body)
                     i += 1
-                    print(i)
+                    print('comment:' + str(i))
                     if i >= msg[5]:
                         break
                 if i >= msg[5]:
                     break
-                print(i)
+                print('new post')
     else:
         raise InputError('argument has to be [titles,posts,comments] \ncan\'t be ' + msg[4])
         return
@@ -219,7 +222,6 @@ async def find_file(msgid, channelid, msg, filename):
                 mess = await client.wait_for('message', check=check, timeout=20.0)
             except asyncio.TimeoutError:
                 await message.channel.send('You took too long...')
-                os.remove(filename)
                 return False
 
             await mess.attachments[0].save(filename)
@@ -236,10 +238,10 @@ def dircount(path):
 
 
 async def save_file(user, filename, filecontent):
+    create_subfolder('Data/' + str(user))
     path = 'Data/{}/'.format(user)
     filepath = '{}/{}.txt'.format(path, filename)
     size = dirsize(path)
-    fileamount = dircount(path)
 
     file = open(filepath, 'w+')
     file.write(filecontent)
@@ -256,6 +258,8 @@ async def save_file(user, filename, filecontent):
     length = len(filecontent)
     filesize = os.path.getsize(filepath)
     start = filecontent[0:min(length, 200)]
+    size = dirsize(path)
+    fileamount = dircount(path)
 
     embed = discord.Embed(title='File succesfully saved',
                           description='Saved as ``{}.txt``'.format(filename),
@@ -385,6 +389,37 @@ async def on_message(message):
             os.remove(tempfile)
 
             await message.channel.send(embed=embed)
+
+    if msg[0] == 'markovify':
+        path = 'Data/{}/'.format(message.author)
+        print(os.listdir(path))
+        allfiles = [file.replace('.txt', '') for file in os.listdir(path)]
+        print(allfiles)
+        if msg[1] in allfiles:
+            filename = os.listdir(path)[allfiles.index(msg[1])]
+            file = open(os.path.join(path, filename), 'r+')
+            filetext = file.read()
+            file.close()
+
+            filetext.replace('.', '\n')
+
+            model = markovify.NewlineText(filetext)
+            modeltime = time.time()
+
+            for i in range(1, 1200):
+                await asyncio.sleep(0.1)
+
+                def check(m):
+                    return m.author == message.author and m.channel == message.channel
+                newmsg = await client.wait_for('message', check=check, timeout=None)
+                msg2 = parse_message(newmsg.content)
+                if not msg2:
+                    if msg[2] == 'generate':
+                        print('...')
+
+            await message.channel.send('The text model has been terminated')
+        else:
+            await message.channel.send('File not found, use ``{} show files`` to show your files'.format(prefix))
 
     if msg[0] == 'logs':
         async for mess in message.channel.history(limit=2):
