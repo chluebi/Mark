@@ -39,6 +39,10 @@ class FilenameError(Exception):
     pass
 
 
+class IntError(Exception):
+    pass
+
+
 def create_subfolder(name):
     dirname = os.path.dirname(__file__)
     create_folder(dirname + '/' + name)
@@ -279,6 +283,30 @@ def space_embed(user):
     return embed
 
 
+def is_int(value, minimal, maximal):
+    try:
+        value2 = int(value)
+        if not (value2 <= maximal and value2 >= minimal):
+            raise IntError('argument has to be [{} < value < {}] \ncan\'t be {}'.format(minimal, maximal, value))
+            return False
+    except:
+        raise IntError('argument has to be [Integer] \ncan\'t be {}'.format(value))
+
+    return value2
+
+
+def is_float(value, minimal, maximal):
+    try:
+        value2 = float(value)
+        if not (value2 <= maximal and value2 >= minimal):
+            raise IntError('argument has to be [{} < value < {}] \ncan\'t be {}'.format(minimal, maximal, value))
+            return False
+    except:
+        raise IntError('argument has to be [Integer] \ncan\'t be {}'.format(value))
+
+    return value2
+
+
 @client.event
 async def on_message(message):
     msg = parse_message(message.content)
@@ -390,36 +418,80 @@ async def on_message(message):
 
             await message.channel.send(embed=embed)
 
-    if msg[0] == 'markovify':
-        path = 'Data/{}/'.format(message.author)
-        print(os.listdir(path))
-        allfiles = [file.replace('.txt', '') for file in os.listdir(path)]
-        print(allfiles)
-        if msg[1] in allfiles:
-            filename = os.listdir(path)[allfiles.index(msg[1])]
-            file = open(os.path.join(path, filename), 'r+')
-            filetext = file.read()
-            file.close()
+    if msg[0] == 'markovify' or msg[0] == 'generate':
 
-            filetext.replace('.', '\n')
+        try:
+            msg[3] = is_int(msg[3], 1, 1000)
+        except IntError as e:
+            await message.channel.send(e.args[0])
+            return
 
-            model = markovify.NewlineText(filetext)
-            modeltime = time.time()
+        if msg[4] != '``empthy``':
+            try:
+                msg[4] = is_float(msg[4], 0.2, 0.9)
+            except IntError as e:
+                await message.channel.send(e.args[0])
+                return
 
-            for i in range(1, 1200):
-                await asyncio.sleep(0.1)
+        endcharacters = []
+        if msg[5] != '``empthy``':
+            try:
+                end = msg[5]
+                end = end[1:len(end) - 1]
 
-                def check(m):
-                    return m.author == message.author and m.channel == message.channel
-                newmsg = await client.wait_for('message', check=check, timeout=None)
-                msg2 = parse_message(newmsg.content)
-                if not msg2:
-                    if msg[2] == 'generate':
-                        print('...')
+                endarray = end.split('|')
 
-            await message.channel.send('The text model has been terminated')
-        else:
-            await message.channel.send('File not found, use ``{} show files`` to show your files'.format(prefix))
+                for char in endarray:
+                    endcharacters.append(char[0])
+
+                print(endcharacters)
+            except Exception:
+                print('duh')
+
+        if msg[1] == 'fromfile':
+            path = 'Data/{}/'.format(message.author)
+            allfiles = [file.replace('.txt', '') for file in os.listdir(path)]
+            print(allfiles)
+            if msg[2] in allfiles:
+                filename = os.listdir(path)[allfiles.index(msg[2])]
+                file = open(os.path.join(path, filename), 'r+')
+                filetext = file.read()
+                file.close()
+
+                for char in endcharacters:
+                    filetext.replace(char, '\n')
+
+                starttime = time.time()
+                model = markovify.NewlineText(filetext)
+
+                sentences = []
+                async with message.channel.typing():
+                    while len(sentences) < msg[3] and (time.time() - starttime) < 120:
+                        sentence = model.make_sentence(tries=100, max_overlap_ratio=msg[4])
+                        print(sentence)
+                        if not sentence in sentences and sentence is not None:
+                            sentences.append(sentence)
+
+                sentences_text = '\n'.join(sentences)
+
+                embed = discord.Embed(title='Generated Sentences',
+                                      description='Generated {} sentences'.format(len(sentences),
+                                                                                  color=0x22f104))
+                embed.add_field(name='Time: ', value='It took {} seconds.'.format(round((time.time() - starttime) * 100) / 100), inline=False)
+                if len(sentences_text) < 1000:
+                    embed.add_field(name='Text: ', value='```\n{}\n```'.format(sentences_text), inline=False)
+
+                await message.channel.send(embed=embed)
+
+                filename = 'Data/Temps/generated.txt'
+                file = open(filename, 'w+')
+                file.write(sentences_text)
+                file.close()
+
+                await message.channel.send(file=discord.File(filename))
+                os.remove(filename)
+            else:
+                await message.channel.send('File not found, use ``{} show files`` to show your files'.format(prefix))
 
     if msg[0] == 'logs':
         async for mess in message.channel.history(limit=2):
