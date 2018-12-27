@@ -19,7 +19,7 @@ reddit = praw.Reddit(client_id=reddittokens['client_id'],
 
 client = discord.Client()
 prefix = 'm!'
-maxsize = 1000000
+maxsize = 10000000
 
 
 @client.event
@@ -63,8 +63,25 @@ def create_folder(path):
 def parse_message(message):
     if message.startswith(prefix):
         parsed_message = message[len(prefix):]
-        parsed_message = parsed_message.split(' ')
-        parsed_message = parsed_message[1:]
+        if parsed_message[0] != ' ':
+            parsed_message = ' ' + parsed_message
+        # parsed_message = parsed_message.split(' ')
+        in_quotes = False
+        parseder_message = []
+        j = -1
+        for i in range(len(parsed_message)):
+            if parsed_message[i] == ' ':
+                if in_quotes:
+                    parseder_message[j] += parsed_message[i]
+                else:
+                    j += 1
+                    parseder_message.append('')
+            elif parsed_message[i] == '"':
+                in_quotes = not in_quotes
+            else:
+                parseder_message[j] += parsed_message[i]
+        parsed_message = parseder_message
+        # parsed_message = parsed_message[1:]
         for i in range(1, 10):
             parsed_message.append('``empty``')
         print(parsed_message)
@@ -210,7 +227,7 @@ async def find_file(msgid, channelid, msg, filename):
         await message.attachments[0].save(filename)
     else:
         findfile = False
-        async for mess in message.channel.history(limit=3):
+        async for mess in message.channel.history(limit=10):
             if len(mess.attachments) != 0:
                 await mess.attachments[0].save(filename)
                 findfile = True
@@ -305,6 +322,20 @@ def is_float(value, minimal, maximal):
         raise IntError('argument has to be [Integer] \ncan\'t be {}'.format(value))
 
     return value2
+
+
+def find_user(user, list):
+    for member in list:
+        if member.name.lower() == user.lower():
+            return member.id
+        if member.id == user.lower():
+            return member.id
+        if member.display_name.lower() == user.lower():
+            return member.id
+        if str(member).lower() == user.lower():
+            return member.id
+
+    return None
 
 
 @client.event
@@ -402,7 +433,7 @@ async def on_message(message):
                 text = file.read()
             except Exception as e:
                 await message.channel.send(e)
-                os.remove(filename)
+                os.remove(tempfile)
                 return
 
             try:
@@ -459,7 +490,7 @@ async def on_message(message):
                 file.close()
 
                 for char in endcharacters:
-                    filetext.replace(char, '\n')
+                    filetext.replace(char, char + '\n')
 
                 starttime = time.time()
                 model = markovify.NewlineText(filetext)
@@ -467,7 +498,7 @@ async def on_message(message):
                 sentences = []
                 async with message.channel.typing():
                     while len(sentences) < msg[3] and (time.time() - starttime) < 120:
-                        sentence = model.make_sentence(tries=100, max_overlap_ratio=msg[4])
+                        sentence = model.make_short_sentence(200, tries=100, max_overlap_ratio=msg[4])
                         print(sentence)
                         if not sentence in sentences and sentence is not None:
                             sentences.append(sentence)
@@ -480,6 +511,9 @@ async def on_message(message):
                 embed.add_field(name='Time: ', value='It took {} seconds.'.format(round((time.time() - starttime) * 100) / 100), inline=False)
                 if len(sentences_text) < 1000:
                     embed.add_field(name='Text: ', value='```\n{}\n```'.format(sentences_text), inline=False)
+                else:
+                    for i in range(min(round(len(sentences_text) / 1000), 5)):
+                        embed.add_field(name='Text: ', value='```\n{}\n```'.format(sentences_text[i * 1000:(i + 1) * 1000]), inline=False)
 
                 await message.channel.send(embed=embed)
 
@@ -491,7 +525,133 @@ async def on_message(message):
                 await message.channel.send(file=discord.File(filename))
                 os.remove(filename)
             else:
-                await message.channel.send('File not found, use ``{} show files`` to show your files'.format(prefix))
+                await message.channel.send('File not found, use ``{} user {}`` to show your files'.format(prefix, message.author))
+
+    if msg[0] == 'user':
+        user = find_user(msg[1], message.channel.guild.members)
+        user = client.get_user(user)
+        path = 'Data/{}/'.format(user)
+
+        if user == None:
+            await message.channel.send('User {} not found'.format(msg[1]))
+        else:
+            embed = discord.Embed(title=user.display_name, description='{0.name}#{0.discriminator}'.format(user), color=0x00fbff)
+            embed.set_thumbnail(url=user.avatar_url)
+            if os.path.isdir('Data/{}/'.format(user)):
+                embed.add_field(name='size', value='{} bytes'.format(dirsize(path)), inline=True)
+                embed.add_field(name='amount', value='{} files'.format(dircount(path)), inline=True)
+                allfiles = ''
+                for f in os.listdir(path):
+                    if os.path.isfile(path + '/' + f):
+                        allfiles = '{}{} || {} bytes \n'.format(allfiles, f, os.path.getsize(path + '/' + f))
+                embed.add_field(name='files', value=allfiles, inline=False)
+            await message.channel.send(embed=embed)
+
+    if msg[0] == 'delete':
+        if os.path.isfile('Data/{}/{}'.format(message.author, msg[1])) or os.path.isfile('Data/{}/{}.txt'.format(message.author, msg[1])):
+            await message.channel.send('Please write ``confirm`` to confirm to delete ``{}``'.format(msg[1]))
+
+            def check(m):
+                return m.author == message.author and m.channel == message.channel and m.content == 'confirm'
+            try:
+                text = await client.wait_for('message', check=check, timeout=10.0)
+                text = text.content
+            except asyncio.TimeoutError:
+                await message.channel.send('You took too long...')
+                return
+            else:
+                if msg[1].endswith('.txt'):
+                    os.remove('Data/{}/{}'.format(message.author, msg[1]))
+                else:
+                    os.remove('Data/{}/{}.txt'.format(message.author, msg[1]))
+                await message.channel.send('File removed')
+        else:
+            await message.channel.send('File ``{}`` not found'.format(msg[1]))
+
+    if msg[0] == 'deepfry':
+        try:
+            msg[3] = is_int(msg[3], 1, 1000)
+        except IntError as e:
+            await message.channel.send(e.args[0])
+            return
+
+        if msg[4] != '``empthy``':
+            try:
+                msg[4] = is_float(msg[4], 0.4, 0.9)
+            except IntError as e:
+                await message.channel.send(e.args[0])
+                return
+        try:
+            msg[5] = is_int(msg[5], 1, 100000)
+        except IntError as e:
+            await message.channel.send(e.args[0])
+            return
+        endcharacters = []
+        if msg[6] != '``empthy``':
+            try:
+                end = msg[6]
+                end = end[1:len(end) - 1]
+
+                endarray = end.split('|')
+
+                for char in endarray:
+                    endcharacters.append(char[0])
+
+                print(endcharacters)
+            except Exception:
+                print('duh')
+
+        if msg[1] == 'fromfile':
+            path = 'Data/{}/'.format(message.author)
+            allfiles = [file.replace('.txt', '') for file in os.listdir(path)]
+            print(allfiles)
+            if msg[2] in allfiles:
+                filename = os.listdir(path)[allfiles.index(msg[2])]
+                file = open(os.path.join(path, filename), 'r+')
+                filetext = file.read()
+                file.close()
+
+                for char in endcharacters:
+                    filetext.replace(char, char + '\n')
+
+                starttime = time.time()
+
+                sentences = filetext
+                async with message.channel.typing():
+                    model = markovify.NewlineText(sentences)
+                    sentences = []
+                    i = 0
+                    while i < msg[5] and (time.time() - starttime) < 180:
+                        i += 1
+                        while len(sentences) < msg[3] and (time.time() - starttime) < 180:
+                            sentence = model.make_sentence(tries=100, max_overlap_ratio=msg[4])
+                            print(sentence)
+                            if not sentence in sentences and sentence is not None:
+                                sentences.append(sentence)
+                        sentences_text = '\n'.join(sentences)
+                        print('layer {} done'.format(i))
+
+                embed = discord.Embed(title='Deepfried Sentences',
+                                      description='Generated {} sentences'.format(len(sentences),
+                                                                                  color=0x22f104))
+                embed.add_field(name='Time: ', value='It took {} seconds.'.format(round((time.time() - starttime) * 100) / 100), inline=False)
+                if len(sentences_text) < 1000:
+                    embed.add_field(name='Text: ', value='```\n{}\n```'.format(sentences_text), inline=False)
+                else:
+                    for i in range(min(round(len(sentences_text) / 1000), 5)):
+                        embed.add_field(name='Text: ', value='```\n{}\n```'.format(sentences_text[i * 1000:(i + 1) * 1000]), inline=False)
+
+                await message.channel.send(embed=embed)
+
+                filename = 'Data/Temps/generated.txt'
+                file = open(filename, 'w+')
+                file.write(sentences_text)
+                file.close()
+
+                await message.channel.send(file=discord.File(filename))
+                os.remove(filename)
+            else:
+                await message.channel.send('File not found, use ``{} user {}`` to show your files'.format(prefix, message.author))
 
     if msg[0] == 'logs':
         async for mess in message.channel.history(limit=2):
