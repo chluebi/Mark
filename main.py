@@ -8,11 +8,18 @@ tokens = json.load(tokenfile)
 bot = commands.Bot(command_prefix=['m!', 'm! '])
 
 startup_extensions = ['files']
+bot.remove_command('help')
 
 
 @bot.event
 async def on_ready():
     print('Logged in as:\n{0} (ID: {0.id})'.format(bot.user))
+
+
+@bot.event
+async def on_command_error(ctx, error):
+    print(error)
+    await ctx.send('``{}``'.format(error))
 
 
 if __name__ == '__main__':

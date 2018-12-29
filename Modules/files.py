@@ -3,7 +3,7 @@ from discord.ext import commands
 import os
 
 datapath = 'Data'
-bot = commands.Bot(command_prefix=['m!', 'm! '])
+#bot = commands.Bot(command_prefix=['m!', 'm! '])
 
 
 class SpaceError(Exception):
@@ -19,9 +19,10 @@ class Save:
         self.bot = bot
 
     @commands.command(name='import', aliases=['save'])
-    async def importer(self, ctx, inputtype: str, filname: str, *rest):
-        """import a file or direct text into your personal folder"""
-        filename = filname + '.txt'
+    async def importer(self, ctx, inputtype: str, file_name: str, *text):
+        """import a file or direct text into your personal folder.
+        <inputtype> must be either 'text' or 'file'"""
+        filename = file_name + '.txt'
         if inputtype == 'file':
             tempfile = 'Data/Temps/temp.txt'
             if len(ctx.message.attachments) != 0:
@@ -35,14 +36,14 @@ class Save:
                         break
 
                 if not findfile:
-                    ctx.send('File not found.')
+                    await ctx.send('File not found.')
                     return
 
             file = open(tempfile, 'r+')
             try:
                 text = file.read()
             except Exception as e:
-                await message.channel.send(e)
+                await ctx.send('``{}``'.format(e))
                 os.remove(tempfile)
                 return
 
@@ -61,7 +62,7 @@ class Save:
 
         elif inputtype == 'text':
             try:
-                embed = await Files.save_file(' '.join(rest), ctx.author, filename)
+                embed = await Files.save_file(' '.join(text), ctx.author, filename)
             except SpaceError as e:
                 await ctx.send(embed=space_embed(ctx.author))
                 return
@@ -127,7 +128,7 @@ class Files:
         fileamount = self.dircount(path)
 
         embed = discord.Embed(title='File succesfully saved',
-                              description='Saved as ``{}.txt``'.format(filename),
+                              description='Saved as ``{}``'.format(filename),
                               color=0x22f104)
         embed.add_field(name='Filesize:', value='{} bytes'.format(filesize), inline=True)
         embed.add_field(name='Charaters:', value='{} characters'.format(length), inline=True)
@@ -139,4 +140,3 @@ class Files:
 
 def setup(bot):
     bot.add_cog(Save(bot))
-    bot.add_cog(Files(bot))
