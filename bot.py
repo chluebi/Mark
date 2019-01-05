@@ -25,6 +25,7 @@ maxsize = 10000000
 @client.event
 async def on_ready():
     print('bot ready')
+    await client.change_presence(status=None, activity=discord.Game(name=prefix + 'help'))
 
 
 class InputError(Exception):
@@ -653,6 +654,35 @@ async def on_message(message):
             else:
                 await message.channel.send('File not found, use ``{} user {}`` to show your files'.format(prefix, message.author))
 
+    if msg[0] == 'invite':
+        await message.channel.send('Invite link: <{}>'.format('https://discordapp.com/oauth2/authorize?client_id=506186669842628628&scope=bot&permissions=3072'))
+
+    if msg[0] == 'help' or msg[0] == 'info':
+        embed = discord.Embed(title='Help menu', description='This is fun text manipulation bot.', color=0x22f104)
+        embed.add_field(name='Prefix', value=prefix)
+        cmd = []
+        cmd.append('``harvest reddit <subreddit> [new|hot|top([hour,day,week,month,year])] [titles|posts|comments] <amount:10-500>``')
+        cmd[0] = cmd[0] + '\n Gets the specified amount of content from a subreddit. (Comments take up to 3 minutes)'
+        cmd.append('``save [file|text] <filename>``')
+        cmd[1] = cmd[1] + '\n Saves content to your personal storage for later use. If ``file`` is given, you need to send a file with the message.'
+        cmd.append('``delete <filename>``')
+        cmd[2] = cmd[2] + '\n Deletes a file in your storage.'
+        cmd.append('``generate fromfile <filename> <amount> <max_overlap_ratio:0.3-0.9> *<split_characters>``')
+        cmd[3] = cmd[3] + '\n Generates Markov sentences and sends them as file.'
+        cmd[3] = cmd[3] + '\n max_overlap_ratio: The ratio of how much of the generated sententes can be the same as the training data'
+        cmd[3] = cmd[3] + '\n split_characters: The characters you want the text to be split by into sentences, the default is just line breaks. '
+        cmd[3] = cmd[3] + 'You write it as the following: (character1|character2|...) example: (.|!|?)'
+        cmd.append('``deepfry fromfile <filename> <amount> <max_overlap_ratio:0.3-0.9> <repetitions> *<split_characters>``')
+        cmd[4] = cmd[4] + '\n This is the same as ``generate`` but instead of doing it once it does it ``<repetions>`` amount of times and uses its output as input everytime.'
+        cmd.append('``user <username>``')
+        cmd[5] = cmd[5] + '\n Display user info.'
+
+        for c in cmd:
+            embed.add_field(name=c.split('\n')[0], value='\n'.join(c.split('\n')[1:]))
+        embed.add_field(name='Invite link:', value='<https://discordapp.com/oauth2/authorize?client_id=506186669842628628&scope=bot&permissions=3072>')
+        await message.channel.send(embed=embed)
+
+    '''
     if msg[0] == 'logs':
         async for mess in message.channel.history(limit=2):
             print(mess.content)
@@ -664,6 +694,7 @@ async def on_message(message):
         path = 'Data/{}/'.format(message.author)
         for f in os.listdir(path):
             print(os.path.getsize('{}/{}'.format(path, f)))
+    '''
 
 
 client.run(discordtoken)
