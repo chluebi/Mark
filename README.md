@@ -2,7 +2,11 @@
 A friendly Python for mining and making markovchains
 
 
-### Dependencies
+### Tags
+
+#### Languages
+- Python
+
+#### Libraries
+- discord.py (outdated)
 - markovify
-- PRAW
-- Reddit Application
